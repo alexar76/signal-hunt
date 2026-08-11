@@ -1,0 +1,25 @@
+{$SIGNAL_HUNT_DOMAIN} {
+  encode zstd gzip
+
+  @hub path /.well-known/ai-market.json /ai-market/*
+  reverse_proxy @hub hub:9083
+
+  @game path /api/* /provider/* /health /docs /openapi.json
+  reverse_proxy @game game:8060
+
+  reverse_proxy game:8060
+
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "DENY"
+    Referrer-Policy "strict-origin-when-cross-origin"
+    Permissions-Policy "camera=(), microphone=(), geolocation=()"
+    -Server
+  }
+
+  log {
+    output stdout
+    format json
+  }
+}

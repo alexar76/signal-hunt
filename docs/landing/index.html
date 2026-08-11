@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Signal Hunt — federation investigation game</title>
+<meta name="description" content="AICOM Signal Hunt: observe live AIMarket federation telemetry, commit a diagnosis, and prove it with a reproducible Brier-score verdict."/>
+<meta property="og:type" content="website"/>
+<meta property="og:title" content="Signal Hunt — The federation emitted a signal. Find the cause."/>
+<meta property="og:description" content="A federation-native investigation game over real AIMarket Hub evidence. Live data only — no seeded anomalies."/>
+<meta property="og:url" content="https://alexar76.github.io/signal-hunt/"/>
+<meta property="og:image" content="https://alexar76.github.io/signal-hunt/social-card.png"/>
+<meta name="theme-color" content="#061018"/>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23061018'/%3E%3Ccircle cx='16' cy='16' r='7' fill='none' stroke='%2335e7ff' stroke-width='2'/%3E%3Ccircle cx='16' cy='16' r='2.5' fill='%23ffb347'/%3E%3C/svg%3E"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --void:#061018;--ink:#e8f7ff;--muted:#7aa7b8;--faint:#4d7384;
+  --cyan:#35e7ff;--amber:#ffb347;--good:#40ffad;--brd:rgba(53,231,255,.22);
+  --head:"Syne",system-ui,sans-serif;--mono:"IBM Plex Mono",ui-monospace,monospace;
+  --maxw:1120px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--void);color:var(--ink);font-family:var(--mono);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+.space{position:fixed;inset:0;z-index:0;pointer-events:none;background:
+  radial-gradient(46vw 40vw at 82% 12%,rgba(53,231,255,.12),transparent 60%),
+  radial-gradient(38vw 34vw at 8% 78%,rgba(255,179,71,.08),transparent 55%),
+  linear-gradient(180deg,#040b12,#061018 50%,#081821)}
+.wrap{position:relative;z-index:2;max-width:var(--maxw);margin:0 auto;padding:0 22px}
+nav{position:sticky;top:0;z-index:40;backdrop-filter:blur(12px);background:linear-gradient(180deg,rgba(6,16,24,.92),rgba(6,16,24,.45));border-bottom:1px solid var(--brd)}
+nav .row{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:58px}
+.brand{display:flex;align-items:center;gap:10px;font-family:var(--head);font-weight:800;letter-spacing:.04em;font-size:17px;text-decoration:none;color:var(--ink)}
+.brand .pip{width:10px;height:10px;border-radius:50%;background:var(--cyan);box-shadow:0 0 14px var(--cyan)}
+.nav-links{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.nav-links a{color:var(--muted);text-decoration:none;font-size:12px;letter-spacing:.04em;padding:6px 10px;border-radius:6px}
+.nav-links a:hover{color:var(--cyan)}
+.hero{padding:42px 0 28px;min-height:88vh;display:grid;align-content:center;gap:28px}
+.hero-kicker{display:inline-flex;align-items:center;gap:10px;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--cyan)}
+.hero-kicker:before{content:"";width:28px;height:1px;background:var(--cyan)}
+.hero h1{margin:0;font-family:var(--head);font-weight:800;font-size:clamp(34px,7vw,64px);letter-spacing:.02em;line-height:1.05;max-width:16ch}
+.hero h1 span{color:var(--amber)}
+.tagline{margin:14px 0 0;max-width:56ch;color:var(--muted);font-size:clamp(14px,2vw,17px)}
+.cta{display:flex;flex-wrap:wrap;gap:12px;margin-top:26px}
+.btn{display:inline-flex;align-items:center;justify-content:center;padding:12px 22px;border-radius:999px;font-family:var(--head);font-weight:700;font-size:13px;letter-spacing:.04em;text-decoration:none;transition:.2s}
+.btn-p{background:linear-gradient(135deg,var(--cyan),#1a9fb8);color:#031018}
+.btn-p:hover{transform:translateY(-1px);box-shadow:0 0 28px rgba(53,231,255,.35)}
+.btn-g{border:1px solid var(--brd);color:var(--ink);background:rgba(8,24,34,.55)}
+.btn-g:hover{border-color:var(--cyan)}
+.btn-live{background:var(--good);color:#031018;animation:pulse 2.2s infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(64,255,173,.45)}50%{box-shadow:0 0 0 10px rgba(64,255,173,0)}}
+.hero-shot{margin-top:8px;border:1px solid var(--brd);border-radius:18px;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.45)}
+.hero-shot img{display:block;width:100%;height:auto;vertical-align:middle}
+.hero-meta{margin-top:10px;color:var(--faint);font-size:12px}
+.hero-meta a{color:var(--cyan);text-decoration:none}
+section{padding:56px 0}
+.section-head{margin-bottom:22px}
+.section-head h2{margin:0;font-family:var(--head);font-size:clamp(22px,4vw,32px)}
+.section-head p{margin:8px 0 0;color:var(--muted);max-width:60ch}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.card{border:1px solid var(--brd);border-radius:14px;padding:18px;background:rgba(8,24,34,.55)}
+.card h3{margin:0 0 8px;font-family:var(--head);font-size:15px}
+.card p{margin:0;color:var(--muted);font-size:13px}
+.gallery{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.gallery figure{margin:0;border:1px solid var(--brd);border-radius:14px;overflow:hidden;background:rgba(8,24,34,.55)}
+.gallery img{display:block;width:100%;height:auto}
+.gallery figcaption{padding:10px 12px;color:var(--muted);font-size:12px}
+.gallery .wide{grid-column:1/-1}
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;counter-reset:step}
+.step{border:1px solid var(--brd);border-radius:14px;padding:16px;background:rgba(8,24,34,.45);position:relative}
+.step:before{counter-increment:step;content:counter(step);position:absolute;top:12px;right:14px;font-family:var(--head);color:var(--amber);font-size:18px}
+.step h3{margin:0 0 6px;font-family:var(--head);font-size:14px;padding-right:24px}
+.step p{margin:0;color:var(--muted);font-size:12px}
+footer{border-top:1px solid var(--brd);padding:28px 0 48px;color:var(--faint);font-size:12px}
+footer a{color:var(--cyan);text-decoration:none}
+@media (max-width:720px){
+  .gallery{grid-template-columns:1fr}
+  .nav-links{display:none}
+}
+</style>
+</head>
+<body>
+<div class="space" aria-hidden="true"></div>
+<nav>
+  <div class="wrap row">
+    <a class="brand" href="#top"><span class="pip" aria-hidden="true"></span>SIGNAL HUNT</a>
+    <div class="nav-links">
+      <a href="#protocol">Protocol</a>
+      <a href="#gallery">Gallery</a>
+      <a href="#truth">Live-only</a>
+      <a href="https://github.com/alexar76/signal-hunt">Source</a>
+    </div>
+  </div>
+</nav>
+
+<main id="top">
+  <section class="hero wrap">
+    <div>
+      <div class="hero-kicker">AICOM · AIMarket federation</div>
+      <h1>The federation emitted a signal. <span>Find the cause.</span></h1>
+      <p class="tagline">Signal Hunt turns measured Hub telemetry into short, auditable detective rounds. Observe real evidence, commit a diagnosis, and prove it with a reproducible Brier-score verdict.</p>
+      <div class="cta">
+        <a class="btn btn-live" href="https://hunt.modelmarket.dev/">Open live hunt</a>
+        <a class="btn btn-p" href="https://github.com/alexar76/signal-hunt">GitHub</a>
+        <a class="btn btn-g" href="https://github.com/alexar76/signal-hunt#readme">Docs &amp; deploy</a>
+      </div>
+    </div>
+    <figure class="hero-shot">
+      <img src="hero.jpg" alt="Signal Hunt live landing with federation telemetry" width="1265" height="712"/>
+      <figcaption class="hero-meta">Capture from the live interface on a real Hub — not a mockup. · <a href="https://hunt.modelmarket.dev/">hunt.modelmarket.dev</a></figcaption>
+    </figure>
+  </section>
+
+  <section class="wrap" id="protocol">
+    <div class="section-head">
+      <h2>Observe → investigate → commit → verify</h2>
+      <p>Four steps. One salt-committed truth. The oracle may shuffle presentation; it never chooses the answer.</p>
+    </div>
+    <div class="steps">
+      <article class="step"><h3>Scan</h3><p>Read a measured symptom with observation time and provenance from Signal Hunt Hub.</p></article>
+      <article class="step"><h3>Investigate</h3><p>Open exact evidence blocks. Score cost only — never invented metrics.</p></article>
+      <article class="step"><h3>Commit</h3><p>Pick a diagnosis and state confidence before the salt is revealed.</p></article>
+      <article class="step"><h3>Verify</h3><p>Deterministic Brier scoring with published inputs, not an LLM grade.</p></article>
+    </div>
+  </section>
+
+  <section class="wrap" id="gallery">
+    <div class="section-head">
+      <h2>Gallery from a real QA session</h2>
+      <p>These frames are from the running product connected to a Hub. No seeded leaderboard ships with the package.</p>
+    </div>
+    <div class="gallery">
+      <figure>
+        <img src="protocol.jpg" alt="Four-step Signal Hunt investigation protocol" width="1265" height="712"/>
+        <figcaption>Investigation protocol on the live board</figcaption>
+      </figure>
+      <figure>
+        <img src="progression.jpg" alt="Verified player status and progression" width="1265" height="712"/>
+        <figcaption>Score-derived status tiers</figcaption>
+      </figure>
+      <figure>
+        <img src="rewards.jpg" alt="Deterministic Signal Hunt rewards" width="1265" height="712"/>
+        <figcaption>Predicate-derived rewards — cosmetic records only</figcaption>
+      </figure>
+      <figure>
+        <img src="verdict.jpg" alt="Auditable Brier-score verdict" width="1265" height="712"/>
+        <figcaption>Every verdict carries inputs, confidence, score, provenance</figcaption>
+      </figure>
+      <figure class="wide">
+        <img src="social-card.png" alt="Signal Hunt social card" width="1536" height="1024"/>
+        <figcaption>Brand card — the federation emitted a signal</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="wrap" id="truth">
+    <div class="section-head">
+      <h2>Live data or no round</h2>
+      <p>If the Hub manifest is unreachable, the API returns <code>503 federation_unavailable</code>. Missing metrics stay <code>null</code>/<code>—</code> — never coerced to fake zeroes.</p>
+    </div>
+    <div class="grid">
+      <article class="card"><h3>Ordinary Hub</h3><p>Signal Hunt Hub is a standard AIMarket Hub — discovery, routing, signing, federation — not a custom arena class.</p></article>
+      <article class="card"><h3>Five free tools</h3><p><code>signal.case</code>, <code>evidence</code>, <code>submit</code>, <code>leaderboard</code>, <code>heroes</code> — registered as first-party capabilities.</p></article>
+      <article class="card"><h3>Fairness seed</h3><p>Option order uses a discovered remote <code>sortes.draw@v1</code> ECVRF; route and receipt hash stay with the round.</p></article>
+      <article class="card"><h3>DIOSCURI relay</h3><p>Opt-in hero feed is Ed25519-signed. Social credentials never enter Signal Hunt.</p></article>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    Part of the <a href="https://github.com/alexar76/aicom">AICOM</a> open agent economy ·
+    <a href="https://modeldev.modelmarket.dev/">Ecosystem map</a> ·
+    <a href="https://github.com/alexar76/signal-hunt">alexar76/signal-hunt</a>
+  </div>
+</footer>
+</body>
+</html>
