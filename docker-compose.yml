@@ -1,0 +1,139 @@
+# Shared Signal Hunt stack. Game image builds from this directory.
+# Hub comes from SIGNAL_HUNT_HUB_IMAGE, or from docker-compose.build-hub.yml
+# when deploying inside the aicom monorepo (see scripts/deploy.sh).
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: signal_hunt_hub
+      POSTGRES_USER: signal_hunt
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U signal_hunt -d signal_hunt_hub"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  hub:
+    image: ${SIGNAL_HUNT_HUB_IMAGE:-signal-hunt-hub:local}
+    environment:
+      AIMARKET_HUB_NAME: Signal Hunt Hub
+      AIMARKET_HUB_URL: https://${SIGNAL_HUNT_DOMAIN:?set SIGNAL_HUNT_DOMAIN}
+      DATABASE_URL: postgresql://signal_hunt:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/signal_hunt_hub
+      PIPELINE_DB_BACKEND: postgres
+      AIMARKET_DB_PATH: /app/data/hub.db
+      AIMARKET_SIGNING_KEY_PATH: /app/data/hub_signing_key
+      AIMARKET_ADMIN_TOKEN: ${AIMARKET_ADMIN_TOKEN:?set AIMARKET_ADMIN_TOKEN}
+      AIMARKET_SEED_LIST: ${AIMARKET_SEED_LIST:?set AIMARKET_SEED_LIST}
+      AIMARKET_SEED_PUBKEYS: ${AIMARKET_SEED_PUBKEYS:?set AIMARKET_SEED_PUBKEYS}
+      AIMARKET_CRAWL_INTERVAL_S: ${AIMARKET_CRAWL_INTERVAL_S:-300}
+      AIMARKET_CRAWL_INITIAL_DELAY_S: "8"
+      AIMARKET_ROUTING_FEE_BPS: ${AIMARKET_ROUTING_FEE_BPS:-100}
+      AIMARKET_MAX_CRAWL_DEPTH: "3"
+      AIMARKET_REQUEST_TIMEOUT_S: "20"
+      AIMARKET_ALLOW_LOCAL_PUBLISH: "0"
+      AIMARKET_SANDBOX_STUB_INVOKE: "0"
+      AIMARKET_ZK_SIMULATED: "0"
+      AIFACTORY_PROD: "1"
+      AIFACTORY_CRYPTO_ENABLED: ${AIFACTORY_CRYPTO_ENABLED:-0}
+    volumes:
+      - hub_data:/app/data
+    restart: unless-stopped
+    networks: [internal]
+    expose: ["9083"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9083/.well-known/ai-market.json"]
+      interval: 20s
+      timeout: 5s
+      retries: 8
+
+  game:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: signal-hunt-game:local
+    environment:
+      SIGNAL_HUNT_PORT: "8060"
+      SIGNAL_HUNT_HUB_URL: http://hub:9083
+      SIGNAL_HUNT_PUBLIC_URL: https://${SIGNAL_HUNT_DOMAIN:?set SIGNAL_HUNT_DOMAIN}
+      SIGNAL_HUNT_DATA_DIR: /app/data
+      SIGNAL_HUNT_ROUND_SECONDS: ${SIGNAL_HUNT_ROUND_SECONDS:-3600}
+      SIGNAL_HUNT_OBSERVATION_CACHE_S: ${SIGNAL_HUNT_OBSERVATION_CACHE_S:-30}
+      SIGNAL_HUNT_OBSERVE_INTERVAL_S: ${SIGNAL_HUNT_OBSERVE_INTERVAL_S:-300}
+      SIGNAL_HUNT_SNAPSHOT_KEEP: ${SIGNAL_HUNT_SNAPSHOT_KEEP:-500}
+      # Trust only RFC1918 + loopback (Caddy on the compose network). Never "*".
+      SIGNAL_HUNT_FORWARDED_ALLOW_IPS: ${SIGNAL_HUNT_FORWARDED_ALLOW_IPS:-10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.1}
+      AIFACTORY_PROD: "1"
+    volumes:
+      - game_data:/app/data
+    depends_on:
+      hub:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [internal]
+    expose: ["8060"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8060/health"]
+      interval: 20s
+      timeout: 5s
+      retries: 8
+
+  bootstrap:
+    image: ${SIGNAL_HUNT_HUB_IMAGE:-signal-hunt-hub:local}
+    entrypoint: ["python", "/bootstrap/register_capabilities.py"]
+    environment:
+      AIMARKET_DB_PATH: /app/data/hub.db
+      DATABASE_URL: postgresql://signal_hunt:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/signal_hunt_hub
+      SIGNAL_HUNT_INTERNAL_PROVIDER_URL: http://game:8060/provider
+      SIGNAL_HUNT_PUBLIC_URL: https://${SIGNAL_HUNT_DOMAIN:?set SIGNAL_HUNT_DOMAIN}
+    volumes:
+      - hub_data:/app/data
+      - ./scripts/register_capabilities.py:/bootstrap/register_capabilities.py:ro
+    depends_on:
+      game:
+        condition: service_healthy
+    networks: [internal]
+    restart: "no"
+
+  caddy:
+    image: caddy:2.10-alpine
+    environment:
+      SIGNAL_HUNT_DOMAIN: ${SIGNAL_HUNT_DOMAIN:?set SIGNAL_HUNT_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      hub:
+        condition: service_healthy
+      game:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [internal]
+
+volumes:
+  postgres_data:
+    name: signal_hunt_postgres_data
+  hub_data:
+    name: signal_hunt_hub_data
+  game_data:
+    name: signal_hunt_game_data
+  caddy_data:
+    name: signal_hunt_caddy_data
+  caddy_config:
+    name: signal_hunt_caddy_config
+
+networks:
+  internal:
+    name: signal_hunt_internal

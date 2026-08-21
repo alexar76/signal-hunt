@@ -1,0 +1,52 @@
+[project]
+name = "aimarket-signal-hunt"
+version = "0.1.0"
+description = "AICOM Signal Hunt — federation-native investigation game over real AIMarket telemetry"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "AICOM Contributors" }]
+readme = "README.md"
+keywords = ["aimarket", "federation", "game", "telemetry", "brier-score"]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "cryptography>=44",
+    "fastapi>=0.136",
+    "httpx>=0.27",
+    "pydantic>=2.9",
+    "uvicorn[standard]>=0.30",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "httpx>=0.27",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["signal_hunt"]
+
+# Explicit allow-list so env files / frontend assets never enter the sdist
+# (publish_pypi.sh secret gate matches `.env.*` as forbidden).
+[tool.hatch.build.targets.sdist]
+include = [
+  "/signal_hunt",
+  "/tests",
+  "/README.md",
+  "/LICENSE",
+  "/pyproject.toml",
+  "/.gitignore",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
