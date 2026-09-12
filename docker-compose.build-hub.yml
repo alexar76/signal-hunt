@@ -1,0 +1,10 @@
+# Overlay used when deploying from the aicom monorepo (builds Hub from source).
+# Selected automatically by scripts/deploy.sh when ../aimarket-hub exists.
+services:
+  hub:
+    build:
+      context: ${SIGNAL_HUNT_MONOREPO_ROOT:-..}
+      dockerfile: aimarket-hub/Dockerfile
+    image: ${SIGNAL_HUNT_HUB_IMAGE:-signal-hunt-hub:local}
+  bootstrap:
+    image: ${SIGNAL_HUNT_HUB_IMAGE:-signal-hunt-hub:local}
