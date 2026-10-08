@@ -1,0 +1,11 @@
+# Host nginx terminates TLS for hunt.modelmarket.dev.
+# Disable Caddy host ports; expose hub/game on loopback only.
+services:
+  caddy:
+    profiles: ["caddy-disabled"]
+  hub:
+    ports:
+      - "127.0.0.1:9084:9083"
+  game:
+    ports:
+      - "127.0.0.1:8060:8060"
