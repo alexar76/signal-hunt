@@ -15,7 +15,7 @@
 
 <!-- aicom-readme-badges -->
 <p align="center">
-  <a href="https://github.com/alexar76/signal-hunt/actions/workflows/ci.yml"><img src="docs/badges/ci.svg" alt="CI" /></a>
+  <a href="https://github.com/alexar76/signal-hunt/actions/workflows/ci.yml"><img src="https://github.com/alexar76/signal-hunt/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="https://alexar76.github.io/signal-hunt/"><img src="docs/badges/landing.svg" alt="Landing" /></a>
   <img src="docs/badges/tests.svg" alt="tests passed" />
   <img src="docs/badges/python.svg" alt="Python >=3.11" />
