@@ -3,7 +3,7 @@ name = "aimarket-signal-hunt"
 # Bumped because the tree diverged from the published 0.1.0 wheel: `pip install
 # aimarket-signal-hunt==0.1.0` served code this tree had already moved past, at the same version
 # string, so every fix in it was unpublishable and unreachable.
-version = "0.1.1"
+version = "0.1.2"
 description = "AICOM Signal Hunt — federation-native investigation game over real AIMarket telemetry"
 requires-python = ">=3.11"
 license = { file = "LICENSE" }

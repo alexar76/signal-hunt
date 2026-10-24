@@ -11,7 +11,7 @@ import statistics
 import time
 from datetime import UTC, datetime
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
@@ -25,8 +25,9 @@ class FederationUnavailable(RuntimeError):
 logger = logging.getLogger(__name__)
 
 
-async def probe_target(peer_url: str) -> str | None:
-    """The well-known URL to probe for this peer, or ``None`` if it must not be probed.
+async def probe_target(peer_url: str) -> tuple[str, dict[str, str], dict[str, str]] | None:
+    """How to probe this peer's well-known — ``(url, headers, extensions)`` — or ``None`` if
+    it must not be probed.
 
     A peer roster is FEDERATED data: the hub lists peers it crawled, and the ``url`` in that
     document is chosen by the peer. Probing it unchecked makes this observer an outbound
@@ -42,6 +43,12 @@ async def probe_target(peer_url: str) -> str | None:
 
     The port is deliberately NOT constrained: hubs in this ecosystem legitimately answer on
     :9083 and friends, so pinning 443 would refuse real peers.
+
+    The request then goes to the address that passed, not to the name: connecting by name
+    let httpx resolve it again, and a name that answers public for the check and private a
+    moment later walked through (DNS rebinding; Vulnetix GCVE-110-PYPI-2026-021946). The URL
+    carries the checked IP, ``Host`` the peer's name, and for https ``sni_hostname`` the name
+    too, so the certificate is still verified against the name the peer gave.
     """
     parsed = urlsplit((peer_url or "").strip())
     if parsed.scheme not in ("http", "https"):
@@ -58,7 +65,12 @@ async def probe_target(peer_url: str) -> str | None:
         literal = None
     if literal is not None:
         # An IP literal needs no lookup, and resolving one would only add a way to be wrong.
-        return f"{peer_url.rstrip('/')}/.well-known/ai-market.json" if literal.is_global else None
+        return (_well_known(parsed, parsed.netloc), {}, {}) if _is_public(literal) else None
+    try:
+        # Host and SNI carry the ASCII form; httpx cannot put a Unicode name in a header.
+        ascii_host = host.encode("idna").decode("ascii")
+    except UnicodeError:
+        return None
 
     port = parsed.port or (443 if parsed.scheme == "https" else 80)
     try:
@@ -67,16 +79,50 @@ async def probe_target(peer_url: str) -> str | None:
         )
     except (socket.gaierror, OSError, UnicodeError):
         return None
-    addresses = {info[4][0] for info in infos}
+    # The resolver's own order, which puts the address family this host can reach first;
+    # sorting the strings pinned IPv6 for dual-stack peers on observers without IPv6.
+    addresses = list(dict.fromkeys(info[4][0] for info in infos))
     if not addresses:
         return None
     for address in addresses:
         try:
-            if not ipaddress.ip_address(address).is_global:
+            if not _is_public(ipaddress.ip_address(address.split("%", 1)[0])):
                 return None
         except ValueError:
             return None
-    return f"{peer_url.rstrip('/')}/.well-known/ai-market.json"
+    pinned = f"[{addresses[0]}]" if ":" in addresses[0] else addresses[0]
+    host_header = ascii_host
+    if parsed.port:
+        pinned = f"{pinned}:{parsed.port}"
+        host_header = f"{ascii_host}:{parsed.port}"
+    extensions = {"sni_hostname": ascii_host} if parsed.scheme == "https" else {}
+    return _well_known(parsed, pinned), {"Host": host_header}, extensions
+
+
+_NAT64 = ipaddress.ip_network("64:ff9b::/96")
+_NAT64_LOCAL = ipaddress.ip_network("64:ff9b:1::/48")
+
+
+def _is_public(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """Global, and so is any IPv4 address it carries: NAT64 (64:ff9b::/96, where
+    64:ff9b::a00:5 is 10.0.0.5), 6to4 (2002::/16) and IPv4-mapped forms all reach that
+    IPv4 address on a host that routes them."""
+    if not ip.is_global:
+        return False
+    if ip.version == 6:
+        if ip in _NAT64_LOCAL:
+            return False
+        embedded = ip.ipv4_mapped or ip.sixtofour
+        if embedded is None and ip in _NAT64:
+            embedded = ipaddress.IPv4Address(int(ip) & 0xFFFFFFFF)
+        if embedded is not None and not embedded.is_global:
+            return False
+    return True
+
+
+def _well_known(parsed, netloc: str) -> str:
+    path = parsed.path.rstrip("/") + "/.well-known/ai-market.json"
+    return urlunsplit((parsed.scheme, netloc, path, parsed.query, ""))
 
 
 def _now() -> str:
@@ -148,8 +194,8 @@ class FederationClient:
         the same fact as `unavailable`, and reporting a refusal as a failed probe would make
         this observer's own guard look like a peer being down.
         """
-        target = await probe_target(peer_url)
-        if target is None:
+        plan = await probe_target(peer_url)
+        if plan is None:
             logger.warning("refusing to probe peer %r: not a public http(s) address", peer_url)
             return {
                 "probe_status": "refused",
@@ -161,7 +207,10 @@ class FederationClient:
             # follow_redirects=False EXPLICITLY, and not only on the client: a well-known
             # document has no reason to redirect, and following one lets a peer that passes
             # the address check 302-pivot to one that never would.
-            response = await client.get(target, follow_redirects=False)
+            target, headers, extensions = plan
+            response = await client.get(
+                target, headers=headers, extensions=extensions, follow_redirects=False
+            )
             elapsed = round((time.perf_counter() - started) * 1000, 2)
             response.raise_for_status()
             return {
@@ -188,7 +237,14 @@ class FederationClient:
             return peer_rows
 
         timeout = httpx.Timeout(PEER_PROBE_TIMEOUT_S)
-        async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
+        # No kept-alive connections: probes to two names on one address must not share a TLS
+        # session, or the second name's certificate would never be checked.
+        # trust_env=False: through an HTTPS_PROXY the tunnel is opened to the pinned IP and the
+        # proxy, not this check, would decide where the name goes.
+        limits = httpx.Limits(max_keepalive_connections=0)
+        async with httpx.AsyncClient(
+            timeout=timeout, follow_redirects=False, limits=limits, trust_env=False
+        ) as client:
             probes = await asyncio.gather(
                 *[self._probe_peer(client, str(row["url"])) for row in limited]
             )

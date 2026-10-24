@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import asyncio
+import socket
+
 import httpx
 
-from signal_hunt.federation import FederationClient, FederationUnavailable
+from signal_hunt.federation import FederationClient, FederationUnavailable, probe_target
 
 
 class RoutedTransport(httpx.AsyncBaseTransport):
@@ -283,3 +286,72 @@ async def test_peer_probe_does_not_follow_redirects_to_internal_hosts(monkeypatc
     assert not any("169.254.169.254" in seen for seen in transport.seen)
     assert by_url["https://93.184.216.34"]["probe_status"] == "unavailable"
     assert by_url["https://93.184.216.34"]["latency_ms"] is None
+
+
+async def test_probe_goes_to_the_address_that_passed_the_check(monkeypatch):
+    # GCVE-110-PYPI-2026-021946: the check resolved the name, then the request resolved it
+    # again. A rebinding name answers public once and 169.254.169.254 the next time; only
+    # the first answer may ever be used.
+    answers = iter([[("93.184.216.34", 443)], [("169.254.169.254", 443)]])
+
+    async def fake_getaddrinfo(host, port, **kwargs):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", addr) for addr in next(answers)]
+
+    monkeypatch.setattr(asyncio.get_running_loop(), "getaddrinfo", fake_getaddrinfo)
+    seen = []
+
+    class Capture(httpx.AsyncBaseTransport):
+        async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+            seen.append(request)
+            return httpx.Response(200, json={}, request=request)
+
+    async with httpx.AsyncClient(transport=Capture()) as client:
+        probe = await FederationClient("https://hunt.example")._probe_peer(
+            client, "https://peer.example:9083/hub"
+        )
+    assert probe["probe_status"] == "ok"
+    request = seen[0]
+    assert str(request.url) == "https://93.184.216.34:9083/hub/.well-known/ai-market.json"
+    assert request.headers["host"] == "peer.example:9083"
+    assert request.extensions["sni_hostname"] == "peer.example"
+
+
+async def test_probe_refuses_a_name_with_any_private_answer(monkeypatch):
+    async def fake_getaddrinfo(host, port, **kwargs):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (a, 80))
+                for a in ("93.184.216.34", "10.0.0.5")]
+
+    monkeypatch.setattr(asyncio.get_running_loop(), "getaddrinfo", fake_getaddrinfo)
+    assert await probe_target("http://peer.example") is None
+
+
+def _resolver(monkeypatch, answers):
+    async def fake_getaddrinfo(host, port, **kwargs):
+        return [((socket.AF_INET6 if ":" in a else socket.AF_INET), socket.SOCK_STREAM, 6, "",
+                 (a, port)) for a in answers]
+
+    monkeypatch.setattr(asyncio.get_running_loop(), "getaddrinfo", fake_getaddrinfo)
+
+
+async def test_dual_stack_peer_keeps_the_resolver_order(monkeypatch):
+    # Sorting the address strings pinned IPv6 first; an observer without IPv6 then
+    # reported a reachable dual-stack peer as unavailable.
+    _resolver(monkeypatch, ["93.184.216.34", "2606:2800:220:1:248:1893:25c8:1946"])
+    url, headers, _ = await probe_target("https://peer.example")
+    assert url == "https://93.184.216.34/.well-known/ai-market.json"
+
+
+async def test_an_idn_peer_is_probed_by_its_ascii_name(monkeypatch):
+    _resolver(monkeypatch, ["93.184.216.34"])
+    url, headers, extensions = await probe_target("https://пример.рф:9083")
+    assert headers == {"Host": "xn--e1afmkfd.xn--p1ai:9083"}
+    assert extensions == {"sni_hostname": "xn--e1afmkfd.xn--p1ai"}
+
+
+async def test_ipv6_forms_that_carry_a_private_ipv4_are_refused(monkeypatch):
+    for address in ("64:ff9b::a00:5", "2002:a9fe:a9fe::1", "::ffff:10.0.0.5"):
+        _resolver(monkeypatch, [address])
+        assert await probe_target("https://peer.example") is None, address
+        assert await probe_target(f"https://[{address}]") is None, address
+    _resolver(monkeypatch, ["64:ff9b::5db8:d822"])     # NAT64 of 93.184.216.34
+    assert await probe_target("https://peer.example") is not None
