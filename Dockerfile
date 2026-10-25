@@ -1,6 +1,7 @@
+# Node security baseline: 22.23.4 (2026-10-21 security release).
 # Signal Hunt game engine — build from the signal-hunt/ directory (monorepo or satellite).
 #   docker build -t signal-hunt-game:local .
-FROM node:22-alpine AS frontend-builder
+FROM node:22.23.4-alpine AS frontend-builder
 WORKDIR /src
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --no-audit --no-fund

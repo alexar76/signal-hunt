@@ -337,13 +337,13 @@ async def test_dual_stack_peer_keeps_the_resolver_order(monkeypatch):
     # Sorting the address strings pinned IPv6 first; an observer without IPv6 then
     # reported a reachable dual-stack peer as unavailable.
     _resolver(monkeypatch, ["93.184.216.34", "2606:2800:220:1:248:1893:25c8:1946"])
-    url, headers, _ = await probe_target("https://peer.example")
+    url, _, _ = await probe_target("https://peer.example")
     assert url == "https://93.184.216.34/.well-known/ai-market.json"
 
 
 async def test_an_idn_peer_is_probed_by_its_ascii_name(monkeypatch):
     _resolver(monkeypatch, ["93.184.216.34"])
-    url, headers, extensions = await probe_target("https://пример.рф:9083")
+    _, headers, extensions = await probe_target("https://пример.рф:9083")
     assert headers == {"Host": "xn--e1afmkfd.xn--p1ai:9083"}
     assert extensions == {"sni_hostname": "xn--e1afmkfd.xn--p1ai"}
 
