@@ -4,8 +4,23 @@ services:
   caddy:
     profiles: ["caddy-disabled"]
   hub:
+    networks:
+      internal:
+        ipv4_address: 172.20.0.3
     ports:
       - "127.0.0.1:9084:9083"
   game:
+    networks:
+      internal:
+        ipv4_address: 172.20.0.4
     ports:
       - "127.0.0.1:8060:8060"
+  postgres:
+    networks:
+      internal:
+        ipv4_address: 172.20.0.2
+networks:
+  internal:
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
